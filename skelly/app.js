@@ -57,7 +57,7 @@ async function maybeWarnLongTrack(durationSec) {
 
 /** Show the long-audio modal unless the user opted out. Always resolves true. */
 function ensureLongWarning() {
-  if (localStorage.getItem(LONG_WARN_ACK_KEY) === '1') return Promise.resolve(true);
+  if (storage.get(LONG_WARN_ACK_KEY) === '1') return Promise.resolve(true);
   const m = $('#longModal');
   // Fallback to alert if the modal block isn’t in the HTML for some reason
   if (!m) { alert(LONG_TRACK_WARN); return Promise.resolve(true); }
@@ -65,7 +65,7 @@ function ensureLongWarning() {
   m.classList.remove('hidden');
   return new Promise((resolve) => {
     const ok = () => {
-      if ($('#longDontShow')?.checked) localStorage.setItem(LONG_WARN_ACK_KEY, '1');
+      if ($('#longDontShow')?.checked) storage.set(LONG_WARN_ACK_KEY, '1');
       cleanup(); resolve(true);
     };
     const cleanup = () => {
@@ -87,6 +87,39 @@ const ADV_KEYS = { raw:'skelly_adv_raw', ft:'skelly_adv_ft', fedc:'skelly_adv_fe
   // --- UI helpers ---
   const $ = sel => document.querySelector(sel);
   const logEl = $('#log');
+
+  // Some browsers (e.g., Safari Private Browsing) expose localStorage but
+  // throw when it is accessed. Guard all reads/writes so critical UI (like the
+  // risk acknowledgement modal) continues to work.
+  const memoryStore = Object.create(null);
+  let storageAvailable = true;
+  const storage = {
+    get(key) {
+      if (storageAvailable) {
+        try {
+          return globalThis.localStorage?.getItem(key) ?? null;
+        } catch (err) {
+          console.warn('localStorage.getItem failed', err);
+          storageAvailable = false;
+        }
+      }
+      return Object.prototype.hasOwnProperty.call(memoryStore, key)
+        ? memoryStore[key]
+        : null;
+    },
+    set(key, value) {
+      if (storageAvailable) {
+        try {
+          globalThis.localStorage?.setItem(key, value);
+          return;
+        } catch (err) {
+          console.warn('localStorage.setItem failed', err);
+          storageAvailable = false;
+        }
+      }
+      memoryStore[key] = value;
+    }
+  };
   function log(msg, cls='') {
     const div = document.createElement('div');
     div.className = `line ${cls}`;
@@ -109,8 +142,11 @@ const ADV_KEYS = { raw:'skelly_adv_raw', ft:'skelly_adv_ft', fedc:'skelly_adv_fe
   const riskModal = $('#riskModal');
   const showRisk = () => riskModal.classList.remove('hidden');
   const hideRisk = () => riskModal.classList.add('hidden');
-  window.addEventListener('load', () => { if (!localStorage.getItem(ACK_KEY)) showRisk(); });
-  $('#riskAccept').addEventListener('click', () => { localStorage.setItem(ACK_KEY, '1'); hideRisk(); });
+  window.addEventListener('load', () => { if (!storage.get(ACK_KEY)) showRisk(); });
+  $('#riskAccept').addEventListener('click', () => {
+    storage.set(ACK_KEY, '1');
+    hideRisk();
+  });
   $('#riskCancel').addEventListener('click', () => { window.location.href = 'about:blank'; });
 
   // --- Advanced menu ---
@@ -123,18 +159,18 @@ const ADV_KEYS = { raw:'skelly_adv_raw', ft:'skelly_adv_ft', fedc:'skelly_adv_fe
   const advEdit = $('#advEdit');
 
 function loadAdvState() {
-  advRaw.checked   = localStorage.getItem(ADV_KEYS.raw)  === '1';
-  advFT.checked    = localStorage.getItem(ADV_KEYS.ft)   === '1';
-  advFEDC.checked  = localStorage.getItem(ADV_KEYS.fedc) === '1';
-  advEdit.checked  = localStorage.getItem(ADV_KEYS.edit) === '1';
+  advRaw.checked   = storage.get(ADV_KEYS.raw)  === '1';
+  advFT.checked    = storage.get(ADV_KEYS.ft)   === '1';
+  advFEDC.checked  = storage.get(ADV_KEYS.fedc) === '1';
+  advEdit.checked  = storage.get(ADV_KEYS.edit) === '1';
   applyAdvVisibility();
 }
 
 function saveAdvState() {
-  localStorage.setItem(ADV_KEYS.raw,  advRaw.checked  ? '1':'0');
-  localStorage.setItem(ADV_KEYS.ft,   advFT.checked   ? '1':'0');
-  localStorage.setItem(ADV_KEYS.fedc, advFEDC.checked ? '1':'0');
-  localStorage.setItem(ADV_KEYS.edit, advEdit.checked ? '1':'0');
+  storage.set(ADV_KEYS.raw,  advRaw.checked  ? '1':'0');
+  storage.set(ADV_KEYS.ft,   advFT.checked   ? '1':'0');
+  storage.set(ADV_KEYS.fedc, advFEDC.checked ? '1':'0');
+  storage.set(ADV_KEYS.edit, advEdit.checked ? '1':'0');
 }
   loadAdvState();
 
@@ -1636,13 +1672,13 @@ const SLOW_ACK_KEY = 'skelly_slow_upload_ack';
 
 /** Show the slow-upload modal unless user opted out. Resolves true to proceed. */
 function ensureSlowWarning() {
-  if (localStorage.getItem(SLOW_ACK_KEY) === '1') return Promise.resolve(true);
+  if (storage.get(SLOW_ACK_KEY) === '1') return Promise.resolve(true);
   const m = $('#slowModal'); if (!m) return Promise.resolve(true);
   m.classList.remove('hidden');
 
   return new Promise((resolve) => {
     const ok = () => {
-      if ($('#slowDontShow')?.checked) localStorage.setItem(SLOW_ACK_KEY, '1');
+      if ($('#slowDontShow')?.checked) storage.set(SLOW_ACK_KEY, '1');
       cleanup(); resolve(true);
     };
     const cancel = () => { cleanup(); resolve(false); };
